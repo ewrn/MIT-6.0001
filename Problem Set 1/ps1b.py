@@ -16,7 +16,5 @@ while current_savings <= total_cost * portion_down_payment:
     
     if months % 6 == 0:
         annual_salary += annual_salary * semi_annual_raise
-        
-
-    
+  
 print("Number of months:", months)
