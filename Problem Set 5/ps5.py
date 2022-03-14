@@ -96,6 +96,22 @@ class Trigger(object):
 
 # Problem 2
 # TODO: PhraseTrigger
+class PhraseTrigger(Trigger):
+    def __init__(self, phrase):
+        self.phrase = phrase
+
+    def is_phrase_in(self, text):
+        formatted = text.lower()
+        punctuation = string.punctuation
+        
+        for char in punctuation:
+            formatted = formatted.replace(char, "")
+        
+        if self.phrase in formatted:
+            return True
+        else:
+            return False
+        
 
 # Problem 3
 # TODO: TitleTrigger
