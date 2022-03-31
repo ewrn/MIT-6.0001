@@ -101,23 +101,57 @@ class PhraseTrigger(Trigger):
         self.phrase = phrase
 
     def is_phrase_in(self, text):
-        formatted = text.lower()
-        punctuation = string.punctuation
+        phrase = self.phrase.lower()
+        phrase_words = phrase.split(' ')
         
-        for char in punctuation:
-            formatted = formatted.replace(char, "")
+        text = [' ' if c in string.punctuation else c for c in text.lower()]
+        text_words = [word for word in ''.join(text).split(' ') if len(word)]
         
-        if self.phrase in formatted:
-            return True
-        else:
+        if len(phrase_words) == 1:
+            return phrase in text_words
+            
+        try:
+            first_word_index = text_words.index(phrase_words[0])
+            phrase_word_count = 1
+            index = first_word_index + phrase_word_count
+            status = False
+            
+            while index < len(text_words):
+                if phrase_words[phrase_word_count] == text_words[index]:
+                    phrase_word_count += 1
+                else:
+                    break
+                if phrase_word_count == len(phrase_words):
+                    status = True
+                    break
+                index += 1
+            return status
+        except ValueError:
             return False
-        
 
 # Problem 3
 # TODO: TitleTrigger
 
+class TitleTrigger(PhraseTrigger):
+
+    def __init__(self, phrase):
+        PhraseTrigger.__init__(self, phrase)
+        
+    def evaluate(self, story):
+        title = story.get_title()
+        return self.is_phrase_in(title)
+
 # Problem 4
 # TODO: DescriptionTrigger
+
+class DescriptionTrigger(PhraseTrigger):
+    
+    def __init__(self, phrase):
+        PhraseTrigger.__init__(self, phrase)
+        
+    def evaluate(self, story):
+        description = story.get_description()
+        return self.is_phrase_in(description)
 
 # TIME TRIGGERS
 
@@ -127,21 +161,72 @@ class PhraseTrigger(Trigger):
 #        Input: Time has to be in EST and in the format of "%d %b %Y %H:%M:%S".
 #        Convert time from string to a datetime before saving it as an attribute.
 
+class TimeTrigger(Trigger):
+    
+    def __init__(self, time):
+        self.time = datetime.strptime(time,"%d %b %Y %H:%M:%S").replace(tzinfo = pytz.timezone('EST'))
+
 # Problem 6
 # TODO: BeforeTrigger and AfterTrigger
 
+class BeforeTrigger(TimeTrigger):
+    
+    def __init__(self, time):
+        TimeTrigger.__init__(self, time)
+        
+    def evaluate(self, story):
+        before_date = story.get_pubdate().replace(tzinfo = pytz.timezone('EST'))
+        return before_date < self.time
+
+class AfterTrigger(TimeTrigger):
+    
+    def __init__(self, time):
+        TimeTrigger.__init__(self, time)
+        
+    def evaluate(self, story):
+        after_date = story.get_pubdate().replace(tzinfo = pytz.timezone('EST'))
+        return after_date > self.time
 
 # COMPOSITE TRIGGERS
 
 # Problem 7
 # TODO: NotTrigger
 
+class NotTrigger(Trigger):
+    
+    def __init__(self, trigger):
+        self.trigger = trigger
+        
+    def evaluate(self, story):
+        return not self.trigger.evaluate(story)
+
 # Problem 8
 # TODO: AndTrigger
+
+class AndTrigger(Trigger):
+    
+    def __init__(self, trigger1, trigger2):
+        self.trigger1 = trigger1
+        self.trigger2 = trigger2
+        
+    def evaluate(self, story):
+        response1 = self.trigger1.evaluate(story)
+        response2 = self.trigger2.evaluate(story)
+        return response1 and response2
 
 # Problem 9
 # TODO: OrTrigger
 
+class OrTrigger(Trigger):
+    
+    def __init__(self, trigger1, trigger2):
+        self.trigger1 = trigger1
+        self.trigger2 = trigger2
+        
+    def evaluate(self, story):
+        response1 = self.trigger1.evaluate(story)
+        response2 = self.trigger2.evaluate(story)
+        return response1 or response2
 
 #======================
 # Filtering
@@ -157,9 +242,7 @@ def filter_stories(stories, triggerlist):
     # TODO: Problem 10
     # This is a placeholder
     # (we're just returning all the stories, with no filtering)
-    return stories
-
-
+    return [s for s in stories if any(t.evaluate(s) for t in triggerlist)]
 
 #======================
 # User-Specified Triggers
@@ -175,12 +258,52 @@ def read_trigger_config(filename):
     # We give you the code to read in the file and eliminate blank lines and
     # comments. You don't need to know how it works for now!
     trigger_file = open(filename, 'r')
+    triggers = {}
     lines = []
     for line in trigger_file:
         line = line.rstrip()
-        if not (len(line) == 0 or line.startswith('//')):
-            lines.append(line)
-
+        
+        if len(line) == 0 or line.startswith('//'):
+            continue
+        
+        args = line.split(',')
+        [trigger_name, trigger_type] = args[:2]
+        
+        if trigger_name == 'ADD':
+            response = [triggers.get(n) for n in args[1:] if triggers.get(n)]
+            break
+        if trigger_type == 'TITLE':
+            triggers[trigger_name] = TitleTrigger(args[2])
+        if trigger_type == 'DESCRIPTION':
+            triggers[trigger_name] = DescriptionTrigger(args[2])
+        if trigger_type == 'AFTER':
+            triggers[trigger_name] = AfterTrigger(args[2])
+        if trigger_type == 'BEFORE':
+            triggers[trigger_name] = BeforeTrigger(args[2])
+        if trigger_type == 'NOT':
+            obj = triggers.get(args[2], None)
+            
+            if obj is None:
+                continue
+            
+            triggers[trigger_name] = NotTrigger(obj)
+        if trigger_type == 'AND':
+            obj1 = triggers.get(args[2], None)
+            obj2 = triggers.get(args[3], None)
+            
+            if obj1 is None or obj2 is None:
+                continue
+            triggers[trigger_name] = AndTrigger(obj1, obj2)
+        if trigger_type == 'OR':
+            obj1 = triggers.get(args[2], None)
+            obj2 = triggers.get(args[3], None)
+            
+            if obj1 is None or obj2 is None:
+                continue
+            triggers[trigger_name] = OrTrigger(obj1, obj2)
+    
+    return response
+    
     # TODO: Problem 11
     # line is the list of lines that you need to parse and for which you need
     # to build triggers
@@ -195,15 +318,17 @@ def main_thread(master):
     # A sample trigger list - you might need to change the phrases to correspond
     # to what is currently in the news
     try:
+        """
         t1 = TitleTrigger("election")
         t2 = DescriptionTrigger("Trump")
         t3 = DescriptionTrigger("Clinton")
         t4 = AndTrigger(t2, t3)
         triggerlist = [t1, t4]
-
+        """
+        
         # Problem 11
         # TODO: After implementing read_trigger_config, uncomment this line 
-        # triggerlist = read_trigger_config('triggers.txt')
+        triggerlist = read_trigger_config('triggers.txt')
         
         # HELPER CODE - you don't need to understand this!
         # Draws the popup window that displays the filtered stories
@@ -211,25 +336,26 @@ def main_thread(master):
         frame = Frame(master)
         frame.pack(side=BOTTOM)
         scrollbar = Scrollbar(master)
-        scrollbar.pack(side=RIGHT,fill=Y)
+        scrollbar.pack(side=RIGHT, fill=Y)
 
         t = "Google & Yahoo Top News"
         title = StringVar()
         title.set(t)
         ttl = Label(master, textvariable=title, font=("Helvetica", 18))
         ttl.pack(side=TOP)
-        cont = Text(master, font=("Helvetica",14), yscrollcommand=scrollbar.set)
+        cont = Text(master, font=("Helvetica", 14), yscrollcommand=scrollbar.set)
         cont.pack(side=BOTTOM)
         cont.tag_config("title", justify='center')
         button = Button(frame, text="Exit", command=root.destroy)
         button.pack(side=BOTTOM)
         guidShown = []
+
         def get_cont(newstory):
             if newstory.get_guid() not in guidShown:
                 cont.insert(END, newstory.get_title()+"\n", "title")
-                cont.insert(END, "\n---------------------------------------------------------------\n", "title")
+                cont.insert(END, "\n{}\n".format('-' * 63), "title")
                 cont.insert(END, newstory.get_description())
-                cont.insert(END, "\n*********************************************************************\n", "title")
+                cont.insert(END, "\n{}\n".format('*' * 69), "title")
                 guidShown.append(newstory.get_guid())
 
         while True:
